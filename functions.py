@@ -9,14 +9,14 @@
 
 # function of counting signal and background for both my signal and basf2 signal
 # Note: n for charged B mesons is 3005530 and for mixed B mesons any integers work
-def sig_bkg_counter(n,list_cut):
+def sig_bkg_counter(y4s_id,list_cut):
     n_sig, n_bkg, n_phgbkg= (np.zeros(len(list_cut)) for n_d in range(3))
     datas = []
     cut=0
     print('{:>13s}{:>14s}{:>10s}{:>15s}{:>15s}{:>15s}{:>10s}{:>20s}'.format('length','total_sigbkg','n_signal','n_background','significance','efficiency','p','peaking_bkg'))
     print('my \nisSignal')
     
-    if n==3005530:
+    if y4s_id=='charged':
         for data in list_cut:
             ns, nb, n_pk = (0 for n in range(3))
             df_sig, df_bkg, df_pkgbkg = (pd.DataFrame() for n_df in range(3))
@@ -38,7 +38,7 @@ def sig_bkg_counter(n,list_cut):
             print(f'cut{cut}:{len(data):6} {int(n_sig[cut]+n_bkg[cut]):10} {int(n_sig[cut]):12} {int(n_bkg[cut]):12} {n_sig[cut]/(pow((n_sig[cut]+n_bkg[cut]),0.5)):13.2f} {n_sig[cut]/(n_sig[0]):17.4f} {(n_sig[cut]/(n_sig[0]))/(1+pow(n_bkg[cut],0.5)):15.6f} {int(n_phgbkg[cut]):10}')
             cut += 1
         
-    else:
+    elif y4s_id=='mixed':
         for data in list_cut:
             ns, nb, n_pk = (0 for n in range(3))
             df_sig, df_bkg, df_pkgbkg = (pd.DataFrame() for n_df in range(3))
