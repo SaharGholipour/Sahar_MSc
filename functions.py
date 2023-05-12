@@ -1,223 +1,374 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # All the defined functions I use in mysignal_comparison analysis
+# In[11]:
 
+# splitting the signal and background. One B reconstructed as Detalnu and the other of Dlnu
 
-# In[1]:
-
-
-# function of counting signal and background for both my signal and basf2 signal
-# Note: n for charged B mesons is 3005530 and for mixed B mesons any integers work
-def sig_bkg_counter(y4s_id,list_cut):
-    n_sig, n_bkg, n_phgbkg= (np.zeros(len(list_cut)) for n_d in range(3))
-    datas = []
-    cut=0
-    print('{:>13s}{:>14s}{:>10s}{:>15s}{:>15s}{:>15s}{:>10s}{:>20s}'.format('length','total_sigbkg','n_signal','n_background','significance','efficiency','p','peaking_bkg'))
-    print('my \nisSignal')
+def sig_bkg_spliter(y4s_id,particle_name,dataset):
+    
     
     if y4s_id=='charged':
-        for data in list_cut:
-            ns, nb, n_pk = (0 for n in range(3))
-            df_sig, df_bkg, df_pkgbkg = (pd.DataFrame() for n_df in range(3))
-            for i in range(len(data)):
-                if ( ((data['aBplusMode'].iloc[i])%10000 in [1019,1020,1039,1040]) | (abs(data['aBminusMode'].iloc[i])%10000 in [1019,1020,1039,1040]) ) and ( (data['pi4_B0_isSignal'].iloc[i]==1) | (data['pi4_B1_isSignal'].iloc[i]==1) ):
-                    ns += 1
-                    df_sig = df_sig.append(pd.DataFrame([data.iloc[i]],index=['signal'],columns=data.columns))
-                else:
-                    nb += 1
-                    df_bkg = df_bkg.append(pd.DataFrame([data.iloc[i]],index=['background'],columns=data.columns))
-                if ( ((data['aBplusMode'].iloc[i])%10000 not in [1019,1020,1039,1040]) & (abs(data['aBminusMode'].iloc[i])%10000 not in [1019,1020,1039,1040]) ) and ( (data['pi4_B0_isSignal'].iloc[i]==1) | (data['pi4_B1_isSignal'].iloc[i]==1) ):
-                    df_pkgbkg = df_pkgbkg.append(pd.DataFrame([data.iloc[i]],index=['peaking background'],columns=data.columns))
-                    n_pk += 1
-            n_sig[cut] = ns
-            n_bkg[cut] = nb
-            n_phgbkg[cut] = n_pk
-            datas.append(pd.concat([df_sig, df_bkg]))
-            print('-'*116)
-            print(f'cut{cut}:{len(data):6} {int(n_sig[cut]+n_bkg[cut]):10} {int(n_sig[cut]):12} {int(n_bkg[cut]):12} {n_sig[cut]/(pow((n_sig[cut]+n_bkg[cut]),0.5)):13.2f} {n_sig[cut]/(n_sig[0]):17.4f} {(n_sig[cut]/(n_sig[0]))/(1+pow(n_bkg[cut],0.5)):15.6f} {int(n_phgbkg[cut]):10}')
-            cut += 1
         
+        # Detalnu reconstructed modes
+        l_rec_mode = [1600,1700,2600,2700]
+        eta_rec_Bp = list(i+1 for i in l_rec_mode) + l_rec_mode
+        # Detalnu generated modes
+        eta_gen_Bp = [1019,1020,1039,1040]
+        
+        # Dpi0lnu reconstructed modes
+        l_pi0_Bp = [1300, 1200, 2300, 2200]
+        pi0_rec_Bp = list(i+1 for i in l_pi0_Bp) + l_pi0_Bp
+        # Dpi0lnu generated modes
+        pi0_gen_Bp = [1008,1010,1028,1030]
+        
+        if particle_name == 'eta':
+            rec_mode = eta_rec_Bp
+            gen_mode = eta_gen_Bp
+        elif particle_name == 'pi0':
+            rec_mode = pi0_rec_Bp
+            gen_mode = pi0_gen_Bp
+            
+
+        # taking the events in which one B as Dlnu and the other one as Detalnu or Dpi0lnu have been reconstructed
+        df_Bp = dataset.loc['charged'].query(
+            f'((B0_decayModeID=={rec_mode} & B1_decayModeID<500) | (B1_decayModeID=={rec_mode} & B0_decayModeID<500))'
+        )
+
+        dfp_bkg = df_Bp.drop(
+            df_Bp[
+                (
+                    ( (df_Bp['aBplusMode']%10000).isin(gen_mode) & (df_Bp['B1_decayModeID']).isin(rec_mode) ) 
+                    |
+                    ( (abs(df_Bp['aBminusMode'])%10000).isin(gen_mode) & (df_Bp['B0_decayModeID']).isin(rec_mode) )
+                )
+                &
+                ( 
+                    (df_Bp['pi4_B0_isSignal']==1) | (df_Bp['pi4_B1_isSignal']==1) 
+                ) 
+            ].index, inplace=False
+        )
+
+        # splitting peaking and combinatoprial background
+        dfp_pkbkg = dfp_bkg[
+            (
+                ( (~(dfp_bkg['aBplusMode']%10000).isin(gen_mode)) | ((dfp_bkg['B1_decayModeID']).isin(rec_mode)) )
+                &
+                ( (~(abs(dfp_bkg['aBminusMode'])%10000).isin(gen_mode)) | ((dfp_bkg['B0_decayModeID']).isin(rec_mode)) )
+            )
+            &
+            (
+                (dfp_bkg['pi4_B0_isSignal']==1) | (dfp_bkg['pi4_B1_isSignal']==1)
+            ) 
+        ]
+
+        dfp_combkg = dfp_bkg.drop(
+            dfp_bkg[
+                (
+                    ( (~(dfp_bkg['aBplusMode']%10000).isin(gen_mode)) | ((dfp_bkg['B1_decayModeID']).isin(rec_mode)) )
+                    &
+                    ( (~(abs(dfp_bkg['aBminusMode'])%10000).isin(gen_mode)) | ((dfp_bkg['B0_decayModeID']).isin(rec_mode)) )
+                )
+                &
+                (
+                    (dfp_bkg['pi4_B0_isSignal']==1) | (dfp_bkg['pi4_B1_isSignal']==1)
+                ) 
+            ].index
+        )
+
+        # signal
+        dfp_sig = df_Bp[
+            (
+                ( (df_Bp['aBplusMode']%10000).isin(gen_mode) & (df_Bp['B1_decayModeID']).isin(rec_mode) ) 
+                |
+                ( (abs(df_Bp['aBminusMode'])%10000).isin(gen_mode) & (df_Bp['B0_decayModeID']).isin(rec_mode) )
+            )
+            &
+            ( 
+                (df_Bp['pi4_B0_isSignal']==1) | (df_Bp['pi4_B1_isSignal']==1) 
+            ) 
+        ]
+
+
+        df = pd.concat([dfp_sig, dfp_pkbkg, dfp_combkg], keys=['signal', 'peaking background', 'combinatorial background'])
+        
+    
     elif y4s_id=='mixed':
-        for data in list_cut:
-            ns, nb, n_pk = (0 for n in range(3))
-            df_sig, df_bkg, df_pkgbkg = (pd.DataFrame() for n_df in range(3))
-            for i in range(len(data)):
-                if ( ((data['aB0Mode'].iloc[i])%10000 in [1017,1018,1035,1036]) | (abs(data['aBbar0Mode'].iloc[i])%10000 in [1017,1018,1035,1036]) ):
-                    ns += 1
-                    df_sig = df_sig.append(pd.DataFrame([data.iloc[i]],index=['signal'],columns=data.columns))
-                else:
-                    nb += 1
-                    df_bkg = df_bkg.append(pd.DataFrame([data.iloc[i]],index=['background'],columns=data.columns))
-                if ( ((data['aB0Mode'].iloc[i])%10000 not in [1017,1018,1035,1036]) & (abs(data['aBbar0Mode'].iloc[i])%10000 not in [1017,1018,1035,1036]) ) and ( (data['pi4_B0_isSignal'].iloc[i]==1) | (data['pi4_B1_isSignal'].iloc[i]==1) ):
-                    df_pkgbkg = df_pkgbkg.append(pd.DataFrame([data.iloc[i]],index=['peaking background'],columns=data.columns))
-                    n_pk += 1
-            n_sig[cut] = ns
-            n_bkg[cut] = nb
-            n_phgbkg[cut] = n_pk
-            datas.append(pd.concat([df_sig, df_bkg]))
-            print('-'*116)
-            print(f'cut{cut}:{len(data):6} {int(n_sig[cut]+n_bkg[cut]):10} {int(n_sig[cut]):12} {int(n_bkg[cut]):12} {n_sig[cut]/(pow((n_sig[cut]+n_bkg[cut]),0.5)):13.2f} {n_sig[cut]/(n_sig[0]):17.4f} {(n_sig[cut]/(n_sig[0]))/(1+pow(n_bkg[cut],0.5)):15.6f} {int(n_phgbkg[cut]):10}')
-            cut += 1
-    
-    n_sig= np.zeros(7)
-    n_bkg= np.zeros(7)
-    cut=0
-    print('*'*116)
-    print('basf2 \nisSignal')
-    for data in list_cut:
-        ns, nb, n_pk = (0 for n in range(3))
-        for i in range(len(data)):
-            if data['isSignal'].iloc[i]==1:
-                ns += 1
-            else:
-                nb += 1
-            if (data['isSignal'].iloc[i]!=1) & ((data['pi4_B0_isSignal'].iloc[i]==1) | (data['pi4_B1_isSignal'].iloc[i]==1)):
-                n_pk += 1 
-        n_sig[cut] = ns
-        n_bkg[cut] = nb
-        n_phgbkg[cut] = n_pk
-        print('-'*116)
-        print(f'cut{cut}:{len(data):6} {int(n_sig[cut]+n_bkg[cut]):10} {int(n_sig[cut]):12} {int(n_bkg[cut]):12} {n_sig[cut]/(pow((n_sig[cut]+n_bkg[cut]),0.5)):13.2f} {n_sig[cut]/(n_sig[0]):17.4f} {(n_sig[cut]/(n_sig[0]))/(1+pow(n_bkg[cut],0.5)):15.6f} {int(n_phgbkg[cut]):10}')
-        cut += 1
-    
-    Tree_cuts = pd.concat(datas, keys=[f'cut{i}' for i in range(len(list_cut))])
-    return Tree_cuts
-    
-
-
-# In[10]:
-
-
-# sum function of list elements
-l = [1, 2, 3, 4, 5]
-def sum_of_list(l):
-  total = 0
-  for val in l:
-    total = total + val
-  return total
-sum_of_list(l[:])
-
-
-# In[3]:
-
-
-# get different ranges
-def x_ranges(window_list, x_from_get_x_ratio, bin_edges_list):
-    data = {}
-    for width in window_list:
-        ranges = []
-        for i in range(len(x_from_get_x_ratio[width])):
-            start_bin = x_from_get_x_ratio[width][i]
-            end_bin = x_from_get_x_ratio[width][i] + width
-            ranges.append(f'{bin_edges_list[start_bin]:.2f} - {bin_edges_list[end_bin]:.2f}')
-        data[width] = ranges
-    return data
-
-
-# In[4]:
-
-
-# the function of getting ratio in each window of histogram, and plot the significance
-# Note: the histtype should be barstacked
-def variable_best_range(width_list, variable_bin_count, variable_bin_edge):
-#    print('{:>12}{:>25}{:>20}'.format('window size', 'highest significance', 'range of variable'), '\n', '~*'*29)
-    ratio_full, significance_full, ranges_full= ({} for n_d in range(3))
-    
-    for width in width_list:
-        ratio, significance, ranges = ([] for n_l in range(3))
         
-        for i in range(len(variable_bin_count[0])):
-            if i+width > len(variable_bin_count[0]) :
-                break
-            else:
-                n_sig = sum_of_list(variable_bin_count[1][i:i+width]-variable_bin_count[0][i:i+width])
-                n_bkg = sum_of_list(variable_bin_count[0][i:i+width])
-                if (n_sig+n_bkg) < 200:
-                    significance.append(np.nan)
-                else:
-                    if n_bkg==0:
-                        pass
-                    else:
-#                         x_value.append((i+(i+width))/2)
-#                         x_value.append(i)
-                        ratio.append(n_sig/n_bkg)
-                        significance.append(n_sig/pow((n_sig+n_bkg), 0.5))
-                ranges.append(f'from {variable_bin_edge[i]:.2f} to {variable_bin_edge[i+width]:.2f}')
-
-#        index = significance.index(np.nanmax(significance))
-#        print(f'{width:8} {np.nanmax(significance):20.2f} {ranges[index]:>28}', '\n', '-'*58)
-#         x_values_full[width] = x_value
-        ranges_full[width] = ranges
-        ratio_full[width] = ratio
-        significance_full[width] = significance
-#         show = plt.scatter(bin_edges[], significance_full[width], label=[f'{width}'])
-#         plt.xlabel('x_value')
-#         plt.ylabel('significance')
+        # Detalnu reconstructed modes
+        l_rec_mode = [1400,1500,2400,2500]
+        eta_rec_B0 = list(i+1 for i in l_rec_mode) + l_rec_mode
+        # Detalnu generated modes
+        eta_gen_B0 = [1017,1018,1035,1036]
         
-    return significance_full, ratio_full, ranges_full#, show
-
-
-
-# print(x_values_full)
-# print(x_values_full[12])
-
-
-# x_values_full, ratio_full = get_x_ratio([10,11,12])
-# plt.plot(x_values_full[10], ratio_full[10])
-
-# for key, value in x_values_full.items():
-#     print(f"width is {key}, xvalues is {value}")
-
-# x_values_full
-
-
-# In[5]:
-
-
-# get longest element in the dictionary
-def GetMaxFlow(flows):        
-    maks=max(flows, key=lambda k: len(flows[k]))
-    return len(flows[maks]), maks
-
-dic = {'a':[1,7,3], 'b':[3,5,6]}
-print(max(dic))
-GetMaxFlow(dic)[1]
-
-
-# In[6]:
-
-
-# this function will make the length of all items of the dictionary the same and then plot them
-# give the significance and ranges from the variable best range function to this function
-
-def plot_variable_best_range(variable_name, width_list, significance_full, ranges_full, variable_bin_edge):
-    # label including this form1 will have these properties
-    form = {'family': 'helvetica', 'color': 'black', 'size': 20}
-    
-    data = []
-    columns = ('highest significance', f'best range for {variable_name}')
-    rows = ['%s bins' % width for width in width_list]
-    n_columns = np.arange(len(columns)) + 0.3
-    bar_width = 0.8
-    
-    for width in width_list:
-        for i in range(GetMaxFlow(significance_full)[0]):
-            if len(significance_full[width]) < GetMaxFlow(significance_full)[0]:
-                significance_full[width].append(np.nan)
-        # getting the index of the highest significance
-        index = significance_full[width].index(np.nanmax(significance_full[width]))
-    
-        data.append([f'{np.nanmax(significance_full[width]):.2f}', ranges_full[width][index]])
+        # Dpi0lnu reconstructed modes
+        l_pi0_B0 = [1100, 1000, 2100, 2000]
+        pi0_rec_B0 = list(i+1 for i in l_pi0_B0) + l_pi0_B0
+        # Dpi0lnu generated modes
+        pi0_gen_B0 = [1008,1010,1026,1028]
         
-        plt.plot(variable_bin_edge[:GetMaxFlow(significance_full)[0]], significance_full[width], 'o', label=[f'{width}'])
-        plt.legend()
+        if particle_name == 'eta':
+            rec_mode = eta_rec_B0
+            gen_mode = eta_gen_B0
+        elif particle_name == 'pi0':
+            rec_mode = pi0_rec_B0
+            gen_mode = pi0_gen_B0
+
         
-#    making the table bellow the plot
-    table = plt.table(cellText=data,colLabels=columns, rowLabels=rows ,loc='bottom', cellLoc = 'center', rowLoc = 'center', bbox=[0.001, -0.9, 1, 0.8])
-    table.set_fontsize(16)
+        # taking the events in which one B as Dlnu and the other one as Detalnu have been reconstructed
+        df_B0 = dataset.loc['mixed'].query(
+            f'((B0_decayModeID=={rec_mode} & B1_decayModeID<500) | (B1_decayModeID=={rec_mode} & B0_decayModeID<500))'
+        )
+        
+        df0_bkg = df_B0.drop(
+            df_B0[
+                (
+                    ( (df_B0['aB0Mode']%10000).isin(gen_mode) & (df_B0['B1_decayModeID']).isin(rec_mode) ) 
+                    |
+                    ( (abs(df_B0['aBbar0Mode'])%10000).isin(gen_mode) & (df_B0['B0_decayModeID']).isin(rec_mode) )
+                )
+                &
+                ( 
+                    (df_B0['pi4_B0_isSignal']==1) | (df_B0['pi4_B1_isSignal']==1) 
+                ) 
+            ].index, inplace=False
+        )
+
+        # splitting peaking and combinatoprial background
+        df0_pkbkg = df0_bkg[
+            (
+                ( (~(df0_bkg['aB0Mode']%10000).isin(gen_mode)) | ((df0_bkg['B1_decayModeID']).isin(rec_mode)) )
+                &
+                ( (~(abs(df0_bkg['aBbar0Mode'])%10000).isin(gen_mode)) | ((df0_bkg['B0_decayModeID']).isin(rec_mode)) )
+            )
+            &
+            (
+                (df0_bkg['pi4_B0_isSignal']==1) | (df0_bkg['pi4_B1_isSignal']==1)
+            ) 
+        ]
+
+        df0_combkg = df0_bkg.drop(
+            df0_bkg[
+                (
+                    ( (~(df0_bkg['aB0Mode']%10000).isin(gen_mode)) | ((df0_bkg['B1_decayModeID']).isin(rec_mode)) )
+                    &
+                    ( (~(abs(df0_bkg['aBbar0Mode'])%10000).isin(gen_mode)) | ((df0_bkg['B0_decayModeID']).isin(rec_mode)) )
+                )
+                &
+                (
+                    (df0_bkg['pi4_B0_isSignal']==1) | (df0_bkg['pi4_B1_isSignal']==1)
+                ) 
+            ].index
+        )
+
+        # signal
+        df0_sig = df_B0[
+            (
+                ( (df_B0['aB0Mode']%10000).isin(gen_mode) & (df_B0['B1_decayModeID']).isin(rec_mode) ) 
+                |
+                ( (abs(df_B0['aBbar0Mode'])%10000).isin(gen_mode) & (df_B0['B0_decayModeID']).isin(rec_mode) )
+            )
+            &
+            ( 
+                (df_B0['pi4_B0_isSignal']==1) | (df_B0['pi4_B1_isSignal']==1) 
+            ) 
+        ]
+
+
+        df = pd.concat([df0_sig, df0_pkbkg, df0_combkg], keys=['signal', 'peaking background', 'combinatorial background'])
+
+    return df, rec_mode, gen_mode
     
-    plt.xlabel(f'{variable_name}', fontdict=form1)
-    plt.ylabel('significance', fontdict=form1)
+# ********************************************************************************************
     
+    
+# crystalball function (non_normalized)
+def crystal_ball(params, x):
+    
+    N, a, n, mu, sig = params
+    aa = abs(a)
+    A = ((n/aa)**n) * exp(- aa**2 / 2)
+    B = n/aa - aa
+    condition1 = lambda x: N * exp(- ((x-mu)**2)/(2.*sig**2) )
+    condition2 = lambda x: N * A * (B - (x-mu)/sig)**(-n)
+    result = np.where((x - mu)/sig > (-a), condition1(x), condition2(x))
+
+    return result
+
+
+def simple_crystal_ball(params, x):
+    N, k, mu, sig = params
+    kk = abs(k)
+    condition1 = lambda x: N * exp(- ((x-mu)**2)/(2.*sig**2))
+    condition2 = lambda x: N * exp( (kk**2/2.) + k * ((x-mu)/sig) )
+    result = np.where((x - mu)/sig < (-k), condition2(x), condition1(x))
+    
+    return result
+
+
+# exponential distribution
+def expo(params, x):
+    const, slope = params
+    return const * exp(-slope*(x)) # try x-0.5
+
+
+expo2 = lambda x, c, s: c * exp(-s*x)
+
+
+# polynomial function with 5 parameters
+def polynomial(params, x):
+    a0,a1,a2,a3,a4 = params
+    return (a0 - a1*x - a2*x**2 - a3*x**3 - a4*x**4)
+
+def crysexpo(params, x, crys_params=None, expo_params=None):
+    p1, p2 = params
+    return p1 * crystal_ball(crys_params, x) + p2 * expo(expo_params, x)
+
+# ************************************************************************************
+
+# initial parameters function
+def get_param(xdata, ydata, func):
+    if func == crystal_ball:
+        N = ydata.max()
+        xb = xdata[ydata.argmax()]
+        sigma = sum(ydata > ydata.mean())*1. / len(xdata) * (xdata.max() - xdata.min())
+        n = 2.
+        a = 2
+        return ([N, a, n, xb, sigma])
+    elif func == simple_crystal_ball:
+        N = ydata.max()
+        xb = xdata[ydata.argmax()]
+        sigma = sum(ydata > ydata.mean())*1. / len(xdata) * (xdata.max() - xdata.min())
+        k = random.uniform(0,abs(np.min(xdata)-xb)/sigma)
+        return array([N, k, xb, sigma])
+    elif func == expo:
+        if ydata[0] < ydata[-1]:
+            const = random.uniform(50*(np.min(ydata)), np.min(ydata))
+        elif ydata[0] > ydata[-1]:
+            const = random.uniform(np.max(ydata), 50*(np.max(ydata)))
+        slope = 8
+        return([const, slope])
+    elif func == polynomial:
+        a0 = random.uniform(np.max(ydata), 50*(np.max(ydata)))
+        a1 = (ydata[-1]-ydata[0]) / (xdata[-1] - xdata[0])
+        a2 = 4
+        a3 = 2
+        a4 = 0.4
+        return array([a0,a1,a2,a3,a4])
+    elif func == expocrys:
+        p1 = 0.06
+        p2 = 0.96
+        return array([p1, p2])
+# **************************************************************************************    
+
+
+# Fitting
+def fit(func, x,y, y_uncertainty, default_pars=None, data_range=None, we=None, verbose=False, itmax=1000):
+
+  # If this is a histogram output, correct it for the user.
+    if len(x) == len(y) + 1:
+        x = (x[1:] + x[:-1])/2.
+  # Take a slice of data.
+  # so means if we give only a slice of our histogram the function will take the x and y values of that part
+    if data_range: # is eqaul to say if data_range != None:
+        y = y[logical_and(x > data_range[0], x < data_range[1])]
+        x = x[logical_and(x > data_range[0], x < data_range[1])]
+
+  # http://www.scipy.org/doc/api_docs/SciPy.odr.odrpack.html
+  # see models.py and use ready made models!!!!
+    if default_pars != None:
+        beta0 = array(default_pars)
+    else:
+#         beta0 = get_default_params(x,y,func)
+        beta0 = get_param(x, y, func)
+    model_func = models.Model(func)
+  
+    # mydata = odr.Data(x, y, we)
+    data = RealData(x, y, sy=y_uncertainty)
+    myodr  = ODR(data, model_func,maxit=itmax, beta0=beta0)
+
+  # Set type of fit to least-squares (fit_type=2):    
+    myodr.set_job(fit_type=2)
+  # final can be 0 (no report), 1 (short report), 2 (long report)    
+    if verbose == 2: myodr.set_iprint(final=2)
+        
+    fit = myodr.run()
+
+  # Display results:
+    if verbose: fit.pprint(), print('verbose: ',verbose)
+
+    if fit.stopreason[0] == 'Iteration limit reached':
+        print('(WWW) poly_lsq: Iteration limit reached, result not reliable!')
+
+  # Results and errors
+    coeff = fit.beta
+    err   = fit.sd_beta
+    covariance_matrix = fit.cov_beta
+    chi   = fit.sum_square
+    res_var = fit.res_var
+
+  # The resulting fit.
+    xfit = linspace( min(x), max(x), len(x)*10)
+    yfit = func(fit.beta, xfit)
+
+    return array([xfit,yfit]),coeff,err,covariance_matrix,chi, res_var
+
+
+
+# **********************************************************************************************
+
+
+# Adding boundaries to ODR fitting function. It's not the same as curve_fit which has the argument for the boundry
+# import numpy as np
+# from scipy.odr import Model, Data, ODR
+
+# # Define the exponential function
+# def exponential_function(beta, x):
+#     c, s = beta
+#     return c * np.exp(-s * x)
+
+# # Define a custom Model class with bounds on the parameters
+# class BoundedExponentialModel(Model):
+#     def __init__(self, fcn, bounds):
+#         Model.__init__(self, fcn)
+#         self.bounds = bounds
+
+#     def fcn(self, beta, x):
+#         c, s = beta
+
+#         # Enforce the bounds
+#         lower_bounds, upper_bounds = self.bounds
+#         c = np.clip(c, lower_bounds[0], upper_bounds[0])
+#         s = np.clip(s, lower_bounds[1], upper_bounds[1])
+
+#         return exponential_function((c, s), x)
+
+# # Define your data (x_data and y_data) here
+# x_data = x_bkg
+# y_data = y_bkg
+
+# # Set the initial parameter estimates (beta0)
+# beta0 = [2e5, 8]
+
+# # Define the bounds for the parameters
+# bounds = ([beta0[0]-1, beta0[0]+1], [np.inf, np.inf])
+# print(bounds)
+
+# # Create the custom model and data instances
+# model = BoundedExponentialModel(exponential_function, bounds)
+# data = Data(x_data, y_data)
+
+# # Create the ODR instance
+# odr = ODR(data, model, beta0=beta0)
+
+# # Run the fit and get the output
+# output = odr.run()
+
+# # Print the fitted parameters
+# print('Fitted parameters:', output.beta, 'Errors: ', output.sd_beta)
+
+
+
+
+
 
