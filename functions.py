@@ -45,7 +45,7 @@ def sig_bkg_spliter(y4s_id,particle_name,dataset):
                 &
                 ( 
                     (df_Bp['pi4_B0_isSignal']==1) | (df_Bp['pi4_B1_isSignal']==1) 
-                ) 
+                )
             ].index, inplace=False
         )
 
@@ -59,7 +59,7 @@ def sig_bkg_spliter(y4s_id,particle_name,dataset):
             &
             (
                 (dfp_bkg['pi4_B0_isSignal']==1) | (dfp_bkg['pi4_B1_isSignal']==1)
-            ) 
+            )
         ]
 
         dfp_combkg = dfp_bkg.drop(
@@ -86,7 +86,7 @@ def sig_bkg_spliter(y4s_id,particle_name,dataset):
             &
             ( 
                 (df_Bp['pi4_B0_isSignal']==1) | (df_Bp['pi4_B1_isSignal']==1) 
-            ) 
+            )
         ]
 
 
@@ -178,9 +178,61 @@ def sig_bkg_spliter(y4s_id,particle_name,dataset):
         df = pd.concat([df0_sig, df0_pkbkg, df0_combkg], keys=['signal', 'peaking background', 'combinatorial background'])
 
     return df, rec_mode, gen_mode
+
+# ********************************************************************************************
+def bBest_cand_newcolumn(data):
+    data = data.reset_index()
+    cosBY0 = data['cosBY0'].to_numpy()
+    cosBY1 = data['cosBY1'].to_numpy()
+    event = data['__event__'].to_numpy()
+    candidate = data['__candidate__'].to_numpy()
+    Y4SScore = data['Y4SScore'].to_numpy()
+    lastev = -1
+    newBest = {}
+    for i in range(len(event)):
+        if event[i]==lastev:
+            if bestY4SScore-Y4SScore[i] < 2 and ( abs(bestCosBY0)>1.1 or abs(bestCosBY1)>1.1 ) and \
+                (bestCosBY0*bestCosBY0+bestCosBY1*bestCosBY1) > cosBY0[i]*cosBY0[i]+cosBY1[i]*cosBY1[i] :
+                newBest[lastev] = candidate[i]
+                bestCosBY0 = cosBY0[i]
+                bestCosBY1 = cosBY1[i]
+        else:
+            newBest[event[i]] = 0
+            bestY4SScore = Y4SScore[i]
+            bestCosBY0 = cosBY0[i]
+            bestCosBY1 = cosBY1[i]
+            lastev = event[i]
+
+    myBest = np.zeros(len(event))
+    for i in range(len(event)):
+        myBest[i] = newBest[event[i]]
+
+    new_column=pd.DataFrame({'bBest':myBest})
+    new_data=pd.concat([data,new_column],axis=1)
+    
+    return new_data
+
+def mincand_eachevent(data):
+#   split the data set to different groups of events
+    data_grouped = data.groupby(['__event__'])
+#   rows where the __candidate__ is minimum in each event
+    mincan_index = data_grouped['__candidate__'].idxmin()
+#   the whole data set with best candidate(minmum value for __candidate__)
+    data_bestcan = data.loc[mincan_index]
+#   remove the rows with minimum value for __candidate__, so there're duplicates(same event slightly different candidate)
+    data_nobestcan = data.drop(mincan_index)
+    
+    return data_bestcan, data_nobestcan
+    
     
 # ********************************************************************************************
+
+# number of degrees of freedom
+def ndf(xdata, params):
+    return len(xdata) - len(params)
+
     
+# ********************************************************************************************
     
 # crystalball function (non_normalized)
 def crystal_ball(params, x):
@@ -209,7 +261,7 @@ def simple_crystal_ball(params, x):
 # exponential distribution
 def expo(params, x):
     const, slope = params
-    return const * exp(-slope*(x)) # try x-0.5
+    return const * exp(-slope*(x-0.5)) # try x-0.5
 
 
 expo2 = lambda x, c, s: c * exp(-s*x)
@@ -219,6 +271,13 @@ expo2 = lambda x, c, s: c * exp(-s*x)
 def polynomial(params, x):
     a0,a1,a2,a3,a4 = params
     return (a0 - a1*x - a2*x**2 - a3*x**3 - a4*x**4)
+
+# orthogonal polynomial (legendre)
+def ortho_pol1(params, x):
+    return np.polynomial.legendre.legval(x, params)
+
+def ortho_pol2(x, *coefs):
+    return legval(x, coefs)
 
 def crysexpo(params, x, crys_params=None, expo_params=None):
     p1, p2 = params
@@ -259,6 +318,8 @@ def get_param(xdata, ydata, func):
         p1 = 0.06
         p2 = 0.96
         return array([p1, p2])
+    
+    
 # **************************************************************************************    
 
 
